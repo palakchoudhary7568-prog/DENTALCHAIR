@@ -35,6 +35,12 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.2));
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
 dirLight.position.set(5, 8, 5);
 dirLight.castShadow = true;
+// Fit the shadow camera tightly around the ~2.7 m unit and bias it, otherwise surfaces
+// shadow themselves and show striped "shadow acne" bands
+dirLight.shadow.mapSize.set(2048, 2048);
+Object.assign(dirLight.shadow.camera, { left: -2.5, right: 2.5, top: 2.5, bottom: -2.5, near: 4, far: 18 });
+dirLight.shadow.bias = -0.0005;
+dirLight.shadow.normalBias = 0.02;
 scene.add(dirLight);
 
 // Floor
@@ -71,6 +77,55 @@ const chair = await loadDentalChair(CHAIR_MODELS.chair3, (e) => {
 });
 loading.remove();
 scene.add(chair);
+
+// The light (and its tight shadow camera) follow the chair when AR moves it around the room
+chair.add(dirLight);
+dirLight.target = chair;
+
+// Colour button (bottom-left): cycles the upholstery colour of the chair and the stool
+const UPHOLSTERY_COLORS = [
+  { name: 'Blue', hex: null }, // the model's own shades
+  { name: 'Sky Blue', hex: 0x5aa9e6 },
+  { name: 'Navy Blue', hex: 0x14215e },
+  { name: 'Cyan', hex: 0x16b3c4 },
+  { name: 'Teal', hex: 0x0f6e6e },
+  { name: 'Green', hex: 0x0e5a2c },
+  { name: 'Mint Green', hex: 0x7fd1ae },
+  { name: 'Yellow', hex: 0xe8c31a },
+  { name: 'Golden', hex: 0xc9971c },
+  { name: 'Orange', hex: 0xb4500a },
+  { name: 'Red', hex: 0x7a0f14 },
+  { name: 'Coral', hex: 0xe5664f },
+  { name: 'Pink', hex: 0xe88aaa },
+  { name: 'Magenta', hex: 0xb3166e },
+  { name: 'Purple', hex: 0x4a1470 },
+  { name: 'Violet', hex: 0x6b3fc0 },
+  { name: 'Lavender', hex: 0xb39ddb },
+  { name: 'Brown', hex: 0x5a3420 },
+  { name: 'Black', hex: 0x141416 },
+  { name: 'White', hex: 0xeeeeea },
+  { name: 'Grey', hex: 0x77797d },
+];
+const upholsteryMaterials = chair.userData.upholsteryMaterials ?? [];
+if (upholsteryMaterials.length) {
+  let colorIndex = 0;
+  const colorButton = document.createElement('button');
+  colorButton.className = 'color-button';
+  const showColor = () => {
+    const { name, hex } = UPHOLSTERY_COLORS[colorIndex];
+    const swatch = hex === null ? upholsteryMaterials[0].userData.originalColor : new THREE.Color(hex);
+    colorButton.textContent = name;
+    colorButton.style.setProperty('--swatch', `#${swatch.getHexString()}`);
+  };
+  colorButton.addEventListener('click', () => {
+    colorIndex = (colorIndex + 1) % UPHOLSTERY_COLORS.length;
+    const { hex } = UPHOLSTERY_COLORS[colorIndex];
+    upholsteryMaterials.forEach((m) => m.color.copy(hex === null ? m.userData.originalColor : new THREE.Color(hex)));
+    showColor();
+  });
+  showColor();
+  document.body.append(colorButton);
+}
 
 // AR button (top-left); floor and grid are hidden while in AR
 const ar = setupAR({ renderer, scene, controls, chair, sceneDecor: [floor, grid] });

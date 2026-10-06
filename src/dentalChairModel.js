@@ -32,6 +32,18 @@ const CHAIR1_FINISHES = {
   'Material.014': { color: 0x000000, emissive: 0xffffff, emissiveIntensity: 1.5 }, // white lamp LEDs
 };
 
+// chair3.glb lamp head, matched to the reference photo: glowing orange centre LEDs,
+// bright white corner LEDs, dark strip across the face
+const CHAIR3_FINISHES = {
+  'Material.008': { color: 0xff7a00, emissive: 0xff5a00, emissiveIntensity: 1.1, roughness: 0.2 }, // centre LEDs
+  'Material.014': { color: 0xffffff, emissive: 0xfff6e8, emissiveIntensity: 1.6, roughness: 0.2 }, // corner LEDs
+  'Material.015': { color: 0x22252b, roughness: 0.3 }, // face strip
+  // Royal-blue leatherette upholstery, as in the photo (the file's own is dark navy-purple and matte)
+  chair: { color: 0x3f5fc0, roughness: 0.6 }, // stool backrest
+  chair2: { color: 0x3f5fc0, roughness: 0.6 }, // chair cushions, stool seat
+  pillow: { color: 0x3a58b8, roughness: 0.6 }, // head and lumbar pillows
+};
+
 /**
  * The GLBs are whole Blender scenes, so each entry says which part is the dental unit:
  * meshes whose centre lies inside `unitBox` (model units), minus `excludeBoxes`, and no
@@ -50,7 +62,13 @@ export const CHAIR_MODELS = {
     unitBox: new THREE.Box3(new THREE.Vector3(-30, -2, -40), new THREE.Vector3(50, 60, 40)),
     excludeBoxes: [new THREE.Box3(new THREE.Vector3(32, 0, -33), new THREE.Vector3(35, 2, -20))], // stray bits
     turn: Math.PI,
-    // Already finished in the file: blue upholstery, white body
+    // Already finished in the file (blue upholstery, white body) apart from the lamp LEDs
+    finishes: CHAIR3_FINISHES,
+    // Cushions of the patient chair (x ≈ 9) and the stool (x ≈ 25); the lamp's dark-blue strip is left out
+    upholstery: {
+      materials: ['chair', 'chair2', 'pillow'],
+      box: new THREE.Box3(new THREE.Vector3(0, 0, -15), new THREE.Vector3(35, 20, 30)),
+    },
   },
 };
 
@@ -141,6 +159,21 @@ export async function loadDentalChair(config, onProgress) {
 
   new Set(kept.map((m) => m.material)).forEach((material) => applyFinish(material, config.finishes));
 
+  // The chair's upholstery gets its own identical material copies, so recolouring it
+  // can't affect other parts that share the source material (e.g. the stool)
+  const upholstery = new Map();
+  for (const mesh of config.upholstery ? kept : []) {
+    if (!config.upholstery.materials.includes(mesh.material.name)) continue;
+    partBox.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+    if (!config.upholstery.box.containsPoint(partBox.getCenter(center))) continue;
+    if (!upholstery.has(mesh.material)) {
+      const copy = mesh.material.clone();
+      copy.userData.originalColor = copy.color.clone();
+      upholstery.set(mesh.material, copy);
+    }
+    mesh.material = upholstery.get(mesh.material);
+  }
+
   const model = new THREE.Group();
   for (const mesh of mergeByMaterial(kept)) {
     mesh.castShadow = true;
@@ -164,6 +197,7 @@ export async function loadDentalChair(config, onProgress) {
 
   const chair = new THREE.Group();
   chair.name = 'DentalChair';
+  chair.userData.upholsteryMaterials = [...upholstery.values()];
   chair.add(turn);
   return chair;
 }
